@@ -1,0 +1,187 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nikki Mirror Newsletter Archive</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    background: #ffffff;
+    color: #333333;
+  }
+  h1 {
+    text-align: center;
+    margin: 0 0 25px;
+    font-size: 26px;
+  }
+  #archive {
+    column-count: 4;
+    column-gap: 28px;
+  }
+  .newsletter {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 12px 5px 18px;
+    border-bottom: 1px solid #dddddd;
+    margin-bottom: 12px;
+    overflow-wrap: anywhere;
+  }
+  .date {
+    font-weight: bold;
+    font-size: 14px;
+    margin-bottom: 7px;
+  }
+  .type {
+    font-size: 12px;
+    color: #777777;
+    margin-bottom: 9px;
+  }
+  .newsletter a {
+    color: #a34e20;
+    font-size: 15px;
+    line-height: 1.5;
+    text-decoration: underline;
+  }
+  #message {
+    text-align: center;
+    padding: 20px;
+  }
+  @media (max-width: 1000px) {
+    #archive { column-count: 2; }
+  }
+  @media (max-width: 600px) {
+    body { padding: 15px; }
+    #archive { column-count: 1; }
+    h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Newsletter Archive</h1>
+<div id="message">Loading newsletters...</div>
+<div id="archive"></div>
+
+<script>
+const csvURL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxpjAqLQYRMBIJ9X_i4I6HKnnYtuLg-3NENfKyeDqJgsFX4FDKvtup0RW3jXmIOmrGfXCGhZvRHMjb/pub?gid=0&single=true&output=csv";
+
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (quoted && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (ch === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((ch === "\n" || ch === "\r") && !quoted) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseDate(value) {
+  const cleaned = value.replace(/^[A-Za-z]+,\s*/, "");
+  const time = Date.parse(cleaned);
+  return Number.isNaN(time) ? NaN : time;
+}
+
+async function loadArchive() {
+  const message = document.getElementById("message");
+  const archive = document.getElementById("archive");
+
+  try {
+    const response = await fetch(csvURL, { cache: "no-store" });
+    if (!response.ok) throw new Error("Cannot load spreadsheet");
+
+    const rows = parseCSV(await response.text());
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
+    const newsletters = rows.slice(1).map(row => ({
+      date: (row[0] || "").trim(),
+      type: (row[1] || "").trim(),
+      title: (row[2] || "").trim(),
+      url: (row[3] || "").trim()
+    })).filter(item => {
+      const date = parseDate(item.date);
+      if (!item.title || !item.url ||
+          !Number.isFinite(date) || date > today.getTime()) {
+        return false;
+      }
+      try {
+        const link = new URL(item.url);
+        return link.protocol === "https:" ||
+               link.protocol === "http:";
+      } catch {
+        return false;
+      }
+    });
+
+    newsletters.sort((a, b) =>
+      parseDate(b.date) - parseDate(a.date)
+    );
+
+    archive.replaceChildren();
+
+    for (const item of newsletters) {
+      const card = document.createElement("div");
+      card.className = "newsletter";
+
+      const date = document.createElement("div");
+      date.className = "date";
+      date.textContent = item.date;
+
+      const type = document.createElement("div");
+      type.className = "type";
+      type.textContent = item.type;
+
+      const link = document.createElement("a");
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = item.title;
+
+      card.append(date, type, link);
+      archive.appendChild(card);
+    }
+
+    message.textContent = newsletters.length
+      ? ""
+      : "No published newsletters are available yet.";
+
+  } catch (error) {
+    message.textContent =
+      "The newsletter archive could not be loaded. Please try again.";
+    console.error(error);
+  }
+}
+
+loadArchive();
+</script>
+</body>
+</html>
